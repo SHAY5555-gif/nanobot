@@ -43,7 +43,7 @@ func (e *Call) Run(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	runtime, err := e.n.GetRuntime(runtime.Options{
+	rt, err := e.n.GetRuntime(runtime.Options{
 		MaxConcurrency: e.n.MaxConcurrency,
 		DSN:            e.n.DSN(),
 	})
@@ -51,9 +51,14 @@ func (e *Call) Run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	ctx := runtime.WithTempSession(cmd.Context(), cfg)
+	env, err := e.n.loadEnv()
+	if err != nil {
+		return err
+	}
 
-	result, err := runtime.CallFromCLI(ctx, args[1], args[2:]...)
+	ctx := withTempSession(cmd.Context(), cfg, env)
+
+	result, err := rt.CallFromCLI(ctx, args[1], args[2:]...)
 	if err != nil {
 		return err
 	}

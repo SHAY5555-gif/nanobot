@@ -45,7 +45,14 @@ func (t *Targets) Run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	tools, err := r.ListTools(r.WithTempSession(cmd.Context(), c), tools.ListToolsOptions{
+	env, err := t.n.loadEnv()
+	if err != nil {
+		return err
+	}
+
+	ctx := withTempSession(cmd.Context(), c, env)
+
+	tools, err := r.ListTools(ctx, tools.ListToolsOptions{
 		Servers: t.MCPServer,
 	})
 	if err != nil {
