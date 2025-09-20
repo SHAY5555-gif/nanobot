@@ -20,7 +20,7 @@ COPY . .
 WORKDIR /app/ui
 # Prefer frozen lockfile if present; fall back to install
 RUN pnpm install --frozen-lockfile || pnpm install
-RUN pnpm run build
+RUN pnpm run build && mv build dist
 
 # Build the Go binary with UI embedded
 WORKDIR /app
