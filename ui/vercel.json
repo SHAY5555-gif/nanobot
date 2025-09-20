@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "api/**/*.js", "use": "@vercel/node@3" },
+    { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "build" } }
+  ],
+  "routes": [
+    { "src": "^/api/mcp$", "dest": "api/mcp.js" },
+    { "src": "^/(.*)$", "dest": "build/$1" }
+  ]
+}
