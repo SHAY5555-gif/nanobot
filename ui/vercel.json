@@ -6,6 +6,7 @@
   ],
   "routes": [
     { "src": "^/api/mcp$", "dest": "api/mcp.js" },
+    { "src": "^/mcp/ui$", "dest": "api/mcp-ui.js" },
     { "handle": "filesystem" },
     { "src": ".*", "dest": "/index.html" }
   ]
