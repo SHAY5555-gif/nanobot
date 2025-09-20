@@ -1,17 +1,5 @@
 <script lang="ts">
 	import type { ChatMessageItemResource } from '$lib/types';
-	import React from 'react';
-	import ReactDOM from 'react-dom/client';
-	import {
-		UIResourceRenderer,
-		basicComponentLibrary,
-		remoteButtonDefinition,
-		remoteTextDefinition,
-		remoteCardDefinition,
-		remoteImageDefinition,
-		remoteStackDefinition,
-		type UIActionResult
-	} from '@mcp-ui/client';
 	import { onMount } from 'svelte';
 
 	interface Props {
@@ -35,7 +23,7 @@
 		}
 	});
 
-	async function onUIAction(e: UIActionResult) {
+	async function onUIAction(e: any) {
 		const x = JSON.stringify(e);
 		console.log(x);
 		console.log('UI Action', e);
@@ -64,8 +52,24 @@
 		}
 	}
 
-	onMount(() => {
-		const root = ReactDOM.createRoot(container);
+	onMount(async () => {
+		const [{ default: React }, reactDomClient, mcp] = await Promise.all([
+			import('react'),
+			import('react-dom/client'),
+			import('@mcp-ui/client')
+		]);
+		const { createRoot } = reactDomClient as any;
+		const {
+			UIResourceRenderer,
+			basicComponentLibrary,
+			remoteButtonDefinition,
+			remoteTextDefinition,
+			remoteCardDefinition,
+			remoteImageDefinition,
+			remoteStackDefinition
+		} = mcp as any;
+
+		const root = createRoot(container);
 		root.render(
 			React.createElement(UIResourceRenderer, {
 				onUIAction,
