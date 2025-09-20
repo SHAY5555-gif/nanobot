@@ -104,20 +104,30 @@ func UISession(next http.Handler, sessionStore *Manager, apiHandler http.Handler
 		}
 
 		uiFS, _ := fs.Sub(ui.FS, "dist")
-		_, err := fs.Stat(uiFS, "fallback.html")
-		if err == nil {
-			if _, err := fs.Stat(uiFS, strings.TrimPrefix(req.URL.Path, "/")); err == nil {
-				if strings.Contains(req.URL.Path, "immutable") {
-					serveGzipAndCached(req, rw, uiFS)
-				} else {
-					http.FileServer(http.FS(uiFS)).ServeHTTP(rw, req)
-				}
+
+		// Determine SPA fallback file: prefer index.html, else fallback.html
+		fallbackFile := "index.html"
+		if _, err := fs.Stat(uiFS, fallbackFile); err != nil {
+			// try legacy fallback.html
+			if _, err2 := fs.Stat(uiFS, "fallback.html"); err2 == nil {
+				fallbackFile = "fallback.html"
 			} else {
-				http.ServeFileFS(rw, req, uiFS, "fallback.html")
+				// No built UI found; proxy to dev server if running
+				url, _ := url.ParseRequestURI("http://localhost:5173")
+				httputil.NewSingleHostReverseProxy(url).ServeHTTP(rw, req)
+				return
+			}
+		}
+
+		// Serve static if file exists, else SPA fallback
+		if _, err := fs.Stat(uiFS, strings.TrimPrefix(req.URL.Path, "/")); err == nil && req.URL.Path != "/" {
+			if strings.Contains(req.URL.Path, "immutable") {
+				serveGzipAndCached(req, rw, uiFS)
+			} else {
+				http.FileServer(http.FS(uiFS)).ServeHTTP(rw, req)
 			}
 		} else {
-			url, _ := url.ParseRequestURI("http://localhost:5173")
-			httputil.NewSingleHostReverseProxy(url).ServeHTTP(rw, req)
+			http.ServeFileFS(rw, req, uiFS, fallbackFile)
 		}
 	})
 }
