@@ -225,22 +225,80 @@ func (h *HTTPServer) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if msg.Method != "initialize" {
-		http.Error(rw, fmt.Sprintf("Method %q not allowed", msg.Method), http.StatusMethodNotAllowed)
+	// If there is no streaming session yet:
+	// - If method is "initialize", create a new session and return its response (existing behavior).
+	// - Otherwise, implicitly create a session, perform initialize, then process the requested method.
+	var session *ServerSession
+	var err error
+
+	// Helper to write JSON response with session header
+	writeSessionJSON := func(resp Message) {
+		rw.Header().Set("Mcp-Session-Id", session.ID())
+		rw.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(rw).Encode(resp); err != nil {
+			http.Error(rw, "Failed to encode response: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if msg.Method == "initialize" {
+		// Existing flow for explicit initialize
+		session, err = NewServerSession(h.ctx, h.MessageHandler)
+		if err != nil {
+			http.Error(rw, "Failed to create session: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer h.sessions.Release(session)
+
+		session.session.sessionManager = h.sessions
+		session.session.AddEnv(h.getEnv(req))
+
+		resp, err := session.Exchange(req.Context(), msg)
+		if err != nil {
+			session.Close(true)
+			http.Error(rw, "Failed to handle message: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if err := h.sessions.Store(req.Context(), session.ID(), session); err != nil {
+			session.Close(true)
+			http.Error(rw, "Failed to store session: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		writeSessionJSON(resp)
 		return
 	}
 
-	session, err := NewServerSession(h.ctx, h.MessageHandler)
+	// Implicit session: create and initialize, then handle the incoming method
+	session, err = NewServerSession(h.ctx, h.MessageHandler)
 	if err != nil {
 		http.Error(rw, "Failed to create session: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-
 	defer h.sessions.Release(session)
 
 	session.session.sessionManager = h.sessions
 	session.session.AddEnv(h.getEnv(req))
 
+	// Perform implicit initialize
+	initResp, err := session.Exchange(req.Context(), Message{
+		JSONRPC: "2.0",
+		ID:      uuid.String(),
+		Method:  "initialize",
+		Params:  []byte(`{"capabilities":{},"clientInfo":{"name":"nanobot-ui"},"protocolVersion":"2025-06-18"}`),
+	})
+	if err != nil || initResp.Error != nil {
+		session.Close(true)
+		if err != nil {
+			http.Error(rw, "Failed to initialize session: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		http.Error(rw, "Failed to initialize session: "+initResp.Error.Message, http.StatusInternalServerError)
+		return
+	}
+
+	// Now process the original message
 	resp, err := session.Exchange(req.Context(), msg)
 	if err != nil {
 		session.Close(true)
@@ -254,12 +312,8 @@ func (h *HTTPServer) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	rw.Header().Set("Mcp-Session-Id", session.ID())
-	rw.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(rw).Encode(resp); err != nil {
-		http.Error(rw, "Failed to encode response: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
+	writeSessionJSON(resp)
+	return
 }
 
 func (h *HTTPServer) runHealthTicker() {
